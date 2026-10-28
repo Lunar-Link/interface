@@ -1,0 +1,736 @@
+<!doctype html>
+<!-- Node interface: talks the mesh-network line protocol over USB serial (Web Serial) or to the simulator bridge in serve.py. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lunar Mesh Node</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f4f4f4; --panel: #ffffff; --panel-2: #f6f6f6; --line: #d9d9d9;
+  --text: #1a1a1a; --muted: #6b6b6b; --accent: #1f5fbf;
+  --good: #1e8a4c; --fair: #a86f00; --poor: #c62f2f; --stale: #9a9a9a;
+  --mono: Consolas, "Cascadia Mono", monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 "Segoe UI", Arial, sans-serif; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; margin: 0; }
+.ident { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
+.ident b { color: var(--text); }
+.spacer { flex: 1; }
+button, select, input { font: inherit; color: var(--text); background: #fff; border: 1px solid #b5b5b5; border-radius: 3px; padding: 3px 8px; }
+button { cursor: pointer; background: #f0f0f0; }
+button:hover:not(:disabled) { background: #e6e6e6; }
+button:disabled { opacity: .5; cursor: default; }
+#conn { color: var(--muted); }
+#conn.on { color: var(--good); font-weight: 600; }
+main { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; padding: 12px 16px 24px; }
+section { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; min-width: 0; }
+section h2 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: baseline; gap: 8px; }
+section h2 .count, section h2 .note { font-weight: normal; color: var(--muted); font-size: 13px; }
+.c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c6 { grid-column: span 6; }
+.c7 { grid-column: span 7; } .c8 { grid-column: span 8; } .c12 { grid-column: span 12; }
+@media (max-width: 1000px) { main > section { grid-column: span 12; } }
+.kv { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px 12px; }
+.kv span { display: block; color: var(--muted); font-size: 12px; }
+.kv b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: normal; font-size: 12px; }
+td.wrap { white-space: normal; word-break: break-word; }
+tr.stale td { color: var(--stale); }
+.empty { color: var(--muted); padding: 8px 2px; }
+.badge { display: inline-block; padding: 0 5px; font-size: 12px; border: 1px solid var(--line); border-radius: 3px; margin-right: 4px; }
+.good { color: var(--good); } .fair { color: var(--fair); } .poor { color: var(--poor); } .muted { color: var(--muted); }
+.b-good { border-color: var(--good); color: var(--good); }
+.b-fair { border-color: var(--fair); color: var(--fair); }
+.b-poor { border-color: var(--poor); color: var(--poor); }
+#map { width: 100%; height: 300px; display: block; }
+#map text { fill: var(--text); font-size: 12px; text-anchor: middle; dominant-baseline: central; }
+#map .lbl { fill: var(--muted); font-size: 10px; }
+form.send { display: grid; grid-template-columns: 70px 120px 100px 90px 1fr auto; gap: 8px; margin-bottom: 10px; }
+form.send label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 2px; }
+form.send input, form.send select { width: 100%; }
+form.send .go { align-self: end; }
+@media (max-width: 700px) { form.send { grid-template-columns: 1fr 1fr; } }
+.inbox { max-height: 320px; overflow-y: auto; }
+.inbox .m { border-bottom: 1px solid var(--line); padding: 6px 0; }
+.inbox .meta { color: var(--muted); font-size: 12px; }
+.inbox .body { word-break: break-word; }
+.inbox .hex { font-family: var(--mono); font-size: 12px; }
+#log { height: 240px; overflow-y: auto; font: 12px/1.4 var(--mono); background: var(--panel-2); border: 1px solid var(--line); padding: 6px 8px; }
+#log div { white-space: pre-wrap; word-break: break-all; }
+#log .ev { color: var(--accent); }
+#log .tx { color: var(--text); font-weight: 600; }
+#log .err { color: var(--poor); }
+#log .row { color: var(--muted); }
+.console-bar { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+.console-bar input[type=text] { flex: 1; font-family: var(--mono); }
+.console-bar label { color: var(--muted); font-size: 12px; display: flex; gap: 4px; align-items: center; }
+#banner { display: none; grid-column: span 12; background: #fff4f4; border: 1px solid var(--poor); color: var(--poor); padding: 8px 12px; }
+#simbar { display: none; grid-column: span 12; }
+#simbar .nodes { display: flex; flex-wrap: wrap; gap: 6px; }
+#simbar .sn { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); padding: 3px 4px 3px 8px; }
+#simbar .sn.dead b { color: var(--poor); text-decoration: line-through; }
+#simbar .sn.att { border-color: var(--accent); }
+#simbar button { padding: 1px 6px; font-size: 12px; }
+#simbar .cut { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; color: var(--muted); font-size: 12px; }
+#simbar .cut input { width: 60px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lunar Mesh Node</h1>
+  <span id="conn"><span id="conn-text">Not connected</span></span>
+  <div class="ident" id="ident"></div>
+  <div class="spacer"></div>
+  <button id="btn-usb">Connect USB</button>
+  <button id="btn-sim" hidden>Simulator</button>
+  <button id="btn-close" hidden>Disconnect</button>
+</header>
+
+<main>
+  <div id="banner"></div>
+
+  <section id="simbar">
+    <h2>Simulator <span class="note">plug into any node, or kill one to watch the mesh route around it</span></h2>
+    <div class="nodes" id="sim-nodes"></div>
+    <div class="cut">Link
+      <input id="cut-a" type="number" min="1" max="254" placeholder="a">
+      <input id="cut-b" type="number" min="1" max="254" placeholder="b">
+      <button id="btn-cut">Cut</button>
+      <button id="btn-join">Join</button>
+      <span id="sim-links"></span>
+    </div>
+  </section>
+
+  <section class="c5">
+    <h2>This node</h2>
+    <div class="kv" id="self"></div>
+    <div class="scroll" style="margin-top:12px"><table id="frames"></table></div>
+  </section>
+
+  <section class="c7">
+    <h2>Network <span class="count" id="net-count"></span></h2>
+    <svg id="map" role="img" aria-label="Network map"></svg>
+    <div class="note muted" style="font-size:12px">Line color is link quality (ETX): green up to 1.5, amber up to 3, red above. Dashed: reported by a stale node.</div>
+  </section>
+
+  <section class="c12">
+    <h2>Nodes <span class="note">from status broadcasts</span></h2>
+    <div class="scroll"><table id="nodes"></table></div>
+  </section>
+
+  <section class="c6">
+    <h2>Neighbors <span class="count" id="nb-count"></span></h2>
+    <div class="scroll"><table id="links"></table></div>
+  </section>
+
+  <section class="c6">
+    <h2>Routes <span class="count" id="rt-count"></span></h2>
+    <div class="scroll"><table id="routes"></table></div>
+  </section>
+
+  <section class="c8">
+    <h2>Send</h2>
+    <form class="send" id="send">
+      <label>To<input id="f-dest" type="number" min="1" max="254" list="known" required></label>
+      <label>Type<select id="f-type"><option value="text">Text</option><option value="cmd">Command</option><option value="tel">Telemetry (hex)</option></select></label>
+      <label>Priority<select id="f-prio"><option value="u">Urgent</option><option value="n" selected>Normal</option><option value="r">Routine</option></select></label>
+      <label>Lifetime s<input id="f-life" type="number" min="1" value="600" required></label>
+      <label>Content<input id="f-text" type="text" maxlength="200" autocomplete="off" required></label>
+      <button class="go" type="submit">Send</button>
+    </form>
+    <datalist id="known"></datalist>
+    <div class="scroll"><table id="sent"></table></div>
+  </section>
+
+  <section class="c4">
+    <h2>Received <span class="count" id="rx-count"></span></h2>
+    <div class="inbox" id="inbox"></div>
+  </section>
+
+  <section class="c12">
+    <h2>Console</h2>
+    <div id="log"></div>
+    <div class="console-bar">
+      <input type="text" id="cmd" placeholder="id, nodes, links, routes, msgs, stats, status, send 2 n 600 hello ..." autocomplete="off">
+      <label><input type="checkbox" id="show-poll"> show polling</label>
+      <button id="btn-clear">Clear</button>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const REFRESH_MS = 5000;
+const FRAME_TYPES = ["HELLO", "DATA", "HOP_ACK", "STATUS", "ROUTE_REQ"];
+const FLAGS = [[1, "low battery", "poor"], [2, "store > 75 %", "fair"], [4, "radio fault", "poor"], [8, "rebooted", "fair"], [16, "no neighbors", "poor"]];
+const STATE_CLASS = { queued: "", transmitted: "b-fair", delivered: "b-good", expired: "b-poor", failed: "b-poor" };
+const BW_KHZ = { 7: "125 kHz", 8: "250 kHz", 9: "500 kHz" };
+
+let transport = null;
+let speed = 1;
+let st;
+
+function fresh() {
+  return {
+    ident: null, radio: null, links: [], routes: [], nodes: [], msgs: [], stats: null,
+    sent: new Map(), inbox: [], storeDepth: null, clock: null, sim: null,
+  };
+}
+st = fresh();
+
+/* Node clock: the latest event time plus elapsed wall time. */
+function nodeNow() {
+  if (!st.clock) return null;
+  return st.clock.t + (performance.now() - st.clock.at) * speed;
+}
+function noteClock(t) {
+  if (typeof t === "number") st.clock = { t, at: performance.now() };
+}
+
+/* Formatting */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function etxClass(e) {
+  if (e === "inf" || e === undefined || e === null) return "poor";
+  return e <= 1.5 ? "good" : e <= 3 ? "fair" : "poor";
+}
+const etxText = e => e === "inf" ? "∞" : Number(e).toFixed(2);
+function ago(ms) {
+  const now = nodeNow();
+  if (now === null || ms === undefined) return "—";
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  return s < 90 ? `${s} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+}
+function duration(s) {
+  if (s === null || s === undefined) return "—";
+  s = Math.floor(s);
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : m ? `${m} min ${s % 60} s` : `${s} s`;
+}
+const volts = mv => mv ? (mv / 1000).toFixed(2) + " V" : "—";
+const pct = q => Math.round(q / 255 * 100) + " %";
+const clockText = () => new Date().toLocaleTimeString([], { hour12: false });
+
+/* Console log */
+function log(text, cls) {
+  const box = $("log");
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = `${clockText()}  ${text}`;
+  box.appendChild(div);
+  while (box.childElementCount > 600) box.firstChild.remove();
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+/* Command queue: one command on the wire at a time; dump rows collect until the end line. */
+const queue = [];
+let pending = null;
+function command(line, quiet = true) {
+  return new Promise((resolve, reject) => {
+    queue.push({ line, quiet, resolve, reject });
+    pump();
+  });
+}
+function pump() {
+  if (pending || !queue.length || !transport) return;
+  pending = queue.shift();
+  pending.rows = [];
+  pending.timer = setTimeout(() => finish(new Error(`no reply to "${pending.line}"`)), 4000);
+  if (!pending.quiet || $("show-poll").checked) log("> " + pending.line, "tx");
+  transport.send(pending.line).catch(e => finish(e));
+}
+function finish(err, result) {
+  const p = pending;
+  if (!p) return;
+  pending = null;
+  clearTimeout(p.timer);
+  if (err) p.reject(err); else p.resolve(result);
+  pump();
+}
+function dropQueue() {
+  if (pending) finish(new Error("disconnected"));
+  while (queue.length) queue.shift().reject(new Error("disconnected"));
+}
+
+function onLine(raw) {
+  let o;
+  try { o = JSON.parse(raw); } catch { log(raw); return; }
+  if (o.ev) {
+    log(raw, o.ev === "error" || (o.ev === "radio" && o.state === "error") ? "err" : "ev");
+    onEvent(o);
+    return;
+  }
+  const show = pending && (!pending.quiet || $("show-poll").checked);
+  if (show || !pending) log(raw, o.ok === false ? "err" : "row");
+  if (!pending) return;
+  if ("end" in o) finish(null, { rows: pending.rows, truncated: !!o.truncated });
+  else if ("ok" in o) finish(null, o);
+  else pending.rows.push(o);
+}
+
+/* Events */
+let refreshSoon = null;
+function scheduleRefresh() {
+  if (refreshSoon) return;
+  refreshSoon = setTimeout(() => { refreshSoon = null; refresh(); }, 800);
+}
+
+function onEvent(e) {
+  noteClock(e.t);
+  switch (e.ev) {
+    case "boot":
+      st = Object.assign(fresh(), { sim: st.sim });
+      $("banner").style.display = "none";
+      start();
+      return;
+    case "error":
+      showBanner(`Node reported an error: ${e.what || "unknown"}`);
+      break;
+    case "radio":
+      st.radio = e;
+      if (e.state === "error") showBanner(`Radio error: ${e.cmd || ""} → ${e.reply || ""}`);
+      renderIdent();
+      break;
+    case "msg": {
+      const key = `${e.origin}:${e.id}`;
+      const m = st.sent.get(key) || { origin: e.origin, id: e.id };
+      Object.assign(m, { dest: e.dest, type: e.type, prio: e.prio, state: e.state, reason: e.reason, result: e.result, at: clockText() });
+      st.sent.set(key, m);
+      renderSent();
+      scheduleRefresh();
+      break;
+    }
+    case "rx":
+      st.inbox.unshift({ ...e, at: clockText() });
+      if (st.inbox.length > 200) st.inbox.pop();
+      renderInbox();
+      break;
+    case "store":
+      st.storeDepth = e.depth;
+      renderSelf();
+      break;
+    default:
+      scheduleRefresh();
+  }
+}
+
+function showBanner(text) {
+  $("banner").textContent = text;
+  $("banner").style.display = "block";
+}
+
+/* Polling */
+let refreshing = false;
+async function refresh() {
+  if (!transport || refreshing) return;
+  refreshing = true;
+  try {
+    if (!st.ident) {
+      const id = await command("id");
+      if (id.ok) { st.ident = id; renderIdent(); }
+    }
+    st.links = (await command("links")).rows;
+    st.routes = (await command("routes")).rows;
+    st.nodes = (await command("nodes")).rows;
+    st.msgs = (await command("msgs")).rows;
+    st.stats = (await command("stats")).rows[0] || null;
+    for (const r of st.msgs) {
+      if (st.ident && r.origin === st.ident.id && r.role !== "relay") {
+        const key = `${r.origin}:${r.id}`;
+        const m = st.sent.get(key) || { origin: r.origin, id: r.id };
+        Object.assign(m, { dest: r.dest, type: r.type, prio: r.prio, state: r.state, attempts: r.attempts, lifetime: r.lifetime_s });
+        st.sent.set(key, m);
+      }
+    }
+    if (st.sim) {
+      const topo = await command("@topo");
+      if (topo.ok) st.sim = topo;
+    }
+    renderAll();
+  } catch (e) {
+    if (transport) log(String(e.message || e), "err");
+  } finally {
+    refreshing = false;
+  }
+}
+setInterval(refresh, REFRESH_MS);
+setInterval(() => { if (transport) { renderSelf(); renderNodes(); renderLinks(); } }, 1000);
+
+function start() {
+  renderAll();
+  refresh();
+}
+
+/* Rendering */
+function renderAll() {
+  renderIdent(); renderSelf(); renderMap(); renderNodes(); renderLinks(); renderRoutes(); renderSent(); renderInbox(); renderSim(); renderKnown();
+}
+
+function renderIdent() {
+  const parts = [];
+  if (st.ident) {
+    parts.push(`<span>Node <b>${st.ident.id}</b></span>`);
+    if (st.ident.station) parts.push(`<span>Station <b>${esc(st.ident.station)}</b></span>`);
+    parts.push(`<span>Network <b>${st.ident.net}</b></span>`);
+  }
+  if (st.radio) {
+    const r = st.radio;
+    if (r.state === "ready") {
+      const mhz = r.band_hz ? (r.band_hz / 1e6).toFixed(3) + " MHz" : "";
+      parts.push(`<span>Radio <b>${esc(r.driver)}</b> ${mhz} SF${r.sf} ${BW_KHZ[r.bw] || "BW" + r.bw} ${r.power_dbm} dBm</span>`);
+    } else {
+      parts.push(`<span>Radio <b class="poor">${esc(r.state)}</b></span>`);
+    }
+  }
+  $("ident").innerHTML = parts.join("");
+}
+
+function renderSelf() {
+  const s = st.stats;
+  const now = nodeNow();
+  const up = st.links.filter(l => l.up && l.bidir).length;
+  const reach = st.routes.filter(r => !r.retracted).length;
+  const held = st.msgs.filter(m => m.role !== "history").length;
+  const tiles = [
+    ["Uptime", now === null ? "—" : duration(now / 1000)],
+    ["Neighbors", st.ident ? `${up}` : "—"],
+    ["Reachable", st.ident ? `${reach}` : "—"],
+    ["Store", st.storeDepth ?? (st.ident ? held : "—")],
+    ["Delivered", s ? s.delivered : "—"],
+    ["Airtime", s ? duration(s.airtime_ms / 1000) : "—"],
+    ["Ack timeouts", s ? s.ack_timeouts : "—"],
+    ["Link failures", s ? s.link_failures : "—"],
+    ["Dropped", s ? s.evicted + s.expired + s.hop_limit_drops : "—"],
+    ["Bad frames", s ? s.rx_bad_tag + s.rx_foreign + s.rx_malformed : "—"],
+  ];
+  $("self").innerHTML = tiles.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("");
+  if (!s) { $("frames").innerHTML = ""; return; }
+  $("frames").innerHTML = `<tr><th>Frames</th>${FRAME_TYPES.map(t => `<th>${t}</th>`).join("")}</tr>` +
+    `<tr><td>Sent</td>${FRAME_TYPES.map((_, i) => `<td>${s.tx_frames[i]}</td>`).join("")}</tr>` +
+    `<tr><td>Received</td>${FRAME_TYPES.map((_, i) => `<td>${s.rx_frames[i]}</td>`).join("")}</tr>`;
+}
+
+function flagBadges(f) {
+  const out = FLAGS.filter(([bit]) => f & bit).map(([, name, c]) => `<span class="badge b-${c}">${name}</span>`);
+  return out.length ? out.join("") : `<span class="muted">ok</span>`;
+}
+
+function renderNodes() {
+  const rows = [...st.nodes].sort((a, b) => a.node - b.node);
+  if (!rows.length) {
+    $("nodes").innerHTML = `<tr><td class="empty">${transport ? "No status heard yet; each node broadcasts about once a minute." : "Connect to a node."}</td></tr>`;
+    return;
+  }
+  $("nodes").innerHTML = `<tr><th>Node</th><th>Station</th><th>Battery</th><th>Uptime</th><th>Store</th><th>Lost</th><th>Health</th><th>Heard</th><th>Its neighbors (ETX)</th></tr>` +
+    rows.map(n => `<tr class="${n.stale ? "stale" : ""}">
+      <td><b>${n.node}</b>${n.stale ? ' <span class="badge">stale</span>' : ""}</td>
+      <td>${esc(n.station || "—")}</td><td>${volts(n.batt_mv)}</td><td>${duration(n.uptime_s)}</td>
+      <td>${n.store}</td><td>${n.lost}</td><td>${flagBadges(n.flags)}</td><td>${ago(n.heard_ms)}</td>
+      <td class="wrap">${n.neighbors.map(([id, e]) => `${id} <span class="${etxClass(e)}">(${etxText(e)})</span>`).join(", ") || "—"}</td></tr>`).join("");
+}
+
+function renderLinks() {
+  $("nb-count").textContent = st.links.length ? `${st.links.filter(l => l.up).length} up` : "";
+  if (!st.links.length) {
+    $("links").innerHTML = `<tr><td class="empty">${transport ? "No neighbors heard." : "—"}</td></tr>`;
+    return;
+  }
+  $("links").innerHTML = `<tr><th>Node</th><th>State</th><th>ETX</th><th>We hear</th><th>Hears us</th><th>RSSI</th><th>SNR</th><th>Heard</th></tr>` +
+    [...st.links].sort((a, b) => a.id - b.id).map(l => {
+      const state = !l.up ? '<span class="badge b-poor">down</span>' : l.bidir ? '<span class="badge b-good">up</span>' : '<span class="badge b-fair">one-way</span>';
+      return `<tr class="${l.up ? "" : "stale"}"><td><b>${l.id}</b></td><td>${state}</td>
+        <td class="${etxClass(l.etx)}">${etxText(l.etx)}</td><td>${pct(l.rxq)}</td><td>${pct(l.txq)}</td>
+        <td>${l.rssi} dBm</td><td>${l.snr} dB</td><td>${ago(l.heard_ms)}</td></tr>`;
+    }).join("");
+}
+
+function renderRoutes() {
+  $("rt-count").textContent = st.routes.length ? `${st.routes.filter(r => !r.retracted).length} reachable` : "";
+  if (!st.routes.length) {
+    $("routes").innerHTML = `<tr><td class="empty">${transport ? "No routes yet." : "—"}</td></tr>`;
+    return;
+  }
+  $("routes").innerHTML = `<tr><th>Destination</th><th>Next hop</th><th>Metric (ETX)</th><th>Seq</th><th></th></tr>` +
+    [...st.routes].sort((a, b) => a.dest - b.dest).map(r => `<tr class="${r.retracted ? "stale" : ""}">
+      <td><b>${r.dest}</b></td><td>${r.retracted ? "—" : r.next === r.dest ? `${r.next} <span class="muted">direct</span>` : r.next}</td>
+      <td>${etxText(r.metric)}</td><td>${r.seq}</td>
+      <td>${r.retracted ? '<span class="badge b-poor">lost</span>' : ""}</td></tr>`).join("");
+}
+
+function renderSent() {
+  const rows = [...st.sent.values()].sort((a, b) => b.id - a.id);
+  if (!rows.length) { $("sent").innerHTML = `<tr><td class="empty">Messages sent from this node appear here with their delivery state.</td></tr>`; return; }
+  $("sent").innerHTML = `<tr><th>Id</th><th>To</th><th>Type</th><th>Priority</th><th>State</th><th>Detail</th><th>Content</th></tr>` +
+    rows.map(m => {
+      const detail = m.state === "delivered" ? (m.result && m.result !== "delivered" ? m.result : "") : (m.reason && m.reason !== "none" ? m.reason.replace("_", " ") : "");
+      return `<tr><td>${m.id}</td><td>${m.dest ?? "—"}</td><td>${m.type || "—"}</td><td>${m.prio || "—"}</td>
+        <td><span class="badge ${STATE_CLASS[m.state] || ""}">${m.state || "—"}</span></td><td class="muted">${esc(detail)}</td>
+        <td class="wrap">${esc(m.content ?? "")}</td></tr>`;
+    }).join("");
+}
+
+function renderInbox() {
+  $("rx-count").textContent = st.inbox.length || "";
+  if (!st.inbox.length) { $("inbox").innerHTML = `<div class="empty">Messages addressed to this node appear here.</div>`; return; }
+  $("inbox").innerHTML = st.inbox.map(m => `<div class="m">
+    <div class="meta">from <b>${m.origin}</b> · ${m.type} · ${m.prio} · ${m.hops} hop${m.hops === 1 ? "" : "s"} · ${m.at}</div>
+    <div class="body ${m.text === undefined ? "hex" : ""}">${esc(m.text ?? m.hex)}</div></div>`).join("");
+}
+
+function renderKnown() {
+  const ids = new Set([...st.nodes.map(n => n.node), ...st.routes.map(r => r.dest)]);
+  $("known").innerHTML = [...ids].sort((a, b) => a - b).map(id => `<option value="${id}">`).join("");
+}
+
+/* Map: the node's own links plus the neighbor lists in every status it has heard. */
+function renderMap() {
+  const svg = $("map");
+  const self = st.ident ? st.ident.id : null;
+  const info = new Map(st.nodes.map(n => [n.node, n]));
+  const ids = new Set(info.keys());
+  if (self !== null) ids.add(self);
+  const edges = new Map();
+  const addEdge = (a, b, etx, stale) => {
+    if (a === b) return;
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    const old = edges.get(key);
+    const worse = !old || etx === "inf" || (old.etx !== "inf" && etx > old.etx);
+    if (!old) edges.set(key, { a, b, etx, stale });
+    else edges.set(key, { a, b, etx: worse ? etx : old.etx, stale: old.stale && stale });
+    ids.add(a); ids.add(b);
+  };
+  if (self !== null) for (const l of st.links) if (l.up) addEdge(self, l.id, l.etx, false);
+  for (const n of st.nodes) for (const [id, e] of n.neighbors) addEdge(n.node, id, e, n.stale);
+
+  const list = [...ids].sort((a, b) => a - b);
+  $("net-count").textContent = list.length ? `${list.length} node${list.length === 1 ? "" : "s"}` : "";
+  const w = svg.clientWidth || 600, h = 300, cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 34;
+  const pos = new Map(list.map((id, i) => {
+    const a = -Math.PI / 2 + 2 * Math.PI * i / list.length;
+    return [id, list.length === 1 ? [cx, cy] : [cx + r * Math.cos(a), cy + r * Math.sin(a)]];
+  }));
+  const color = c => `var(--${c})`;
+  let out = "";
+  for (const e of edges.values()) {
+    const [x1, y1] = pos.get(e.a), [x2, y2] = pos.get(e.b);
+    out += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${e.stale ? color("stale") : color(etxClass(e.etx))}" stroke-width="2" ${e.stale ? 'stroke-dasharray="4 4"' : ""} opacity=".85"/>`;
+  }
+  for (const id of list) {
+    const [x, y] = pos.get(id);
+    const n = info.get(id);
+    const stale = n ? n.stale : id !== self;
+    const fill = id === self ? "#e3ecfa" : "#fff";
+    const stroke = id === self ? "var(--accent)" : stale ? "var(--stale)" : n && n.flags & 21 ? "var(--poor)" : "var(--good)";
+    out += `<circle cx="${x}" cy="${y}" r="17" fill="${fill}" stroke="${stroke}" stroke-width="2.5"/>`;
+    out += `<text x="${x}" y="${y}" style="${id === self ? "font-weight:700" : stale ? "fill:var(--stale)" : ""}">${id}</text>`;
+    if (n && n.station) out += `<text class="lbl" x="${x}" y="${y + 27}">${esc(n.station)}</text>`;
+  }
+  if (!list.length) out = `<text x="${cx}" y="${cy}" class="lbl">${transport ? "Waiting for the first status broadcasts" : "Not connected"}</text>`;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.innerHTML = out;
+}
+window.addEventListener("resize", renderMap);
+
+/* Simulator controls */
+function renderSim() {
+  $("simbar").style.display = st.sim ? "block" : "none";
+  if (!st.sim || !st.sim.alive) return;
+  const alive = new Set(st.sim.alive);
+  const all = new Set(st.sim.alive);
+  st.sim.links.forEach(([a, b]) => { all.add(a); all.add(b); });
+  const ids = [...all].filter(x => Number.isInteger(x) && x > 0 && x < 255).sort((a, b) => a - b);
+  $("sim-nodes").innerHTML = ids.map(id => {
+    const live = alive.has(id), att = id === st.sim.attached;
+    return `<div class="sn ${live ? "" : "dead"} ${att ? "att" : ""}"><b>${id}</b>
+      ${att ? '<span class="muted">attached</span>' : `<button data-sim="@attach ${id}">plug in</button>`}
+      <button data-sim="${live ? "@kill" : "@revive"} ${id}">${live ? "kill" : "revive"}</button></div>`;
+  }).join("");
+  $("sim-links").textContent = "links: " + st.sim.links.map(([a, b, loss]) => `${a}-${b}${loss ? ` (${loss} %)` : ""}`).join("  ");
+}
+$("simbar").addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-sim]");
+  if (!b) return;
+  const line = b.dataset.sim;
+  const res = await command(line, false).catch(e => ({ ok: false, reason: e.message }));
+  if (res.ok && line.startsWith("@attach")) {
+    st = Object.assign(fresh(), { sim: st.sim });
+    $("log").innerHTML = "";
+    log(`plugged into node ${line.split(" ")[1]}`, "ev");
+  }
+  refresh();
+});
+async function simLink(verb) {
+  const a = $("cut-a").value, b = $("cut-b").value;
+  if (!a || !b) return;
+  await command(`${verb} ${a} ${b}`, false).catch(() => {});
+  refresh();
+}
+$("btn-cut").onclick = () => simLink("@cut");
+$("btn-join").onclick = () => simLink("@join");
+
+/* Send form */
+$("f-type").onchange = () => { $("f-prio").disabled = $("f-type").value !== "text"; };
+$("send").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  if (!transport) return;
+  const dest = $("f-dest").value, type = $("f-type").value, life = $("f-life").value;
+  let content = $("f-text").value.replace(/[\r\n]+/g, " ").trim();
+  if (!content) return;
+  if (type === "tel") content = content.replace(/\s+/g, "");
+  const line = type === "text" ? `send ${dest} ${$("f-prio").value} ${life} ${content}` : `${type} ${dest} ${life} ${content}`;
+  try {
+    const res = await command(line, false);
+    if (res.ok) {
+      const key = `${res.origin}:${res.id}`;
+      const m = st.sent.get(key) || { origin: res.origin, id: res.id, dest: Number(dest), state: "queued" };
+      m.content = content;
+      st.sent.set(key, m);
+      $("f-text").value = "";
+      renderSent();
+    } else {
+      log(`send refused: ${res.reason}`, "err");
+    }
+  } catch (e) { log(String(e.message || e), "err"); }
+});
+
+/* Console input */
+$("cmd").addEventListener("keydown", async ev => {
+  if (ev.key !== "Enter" || !transport) return;
+  const line = $("cmd").value.trim();
+  if (!line) return;
+  $("cmd").value = "";
+  try {
+    const res = await command(line, false);
+    if (res.ok && /^(send|cmd|tel) /.test(line)) {
+      const m = st.sent.get(`${res.origin}:${res.id}`);
+      if (m) { m.content = line.split(" ").slice(line.startsWith("send") ? 4 : 3).join(" "); renderSent(); }
+    }
+  } catch (e) { log(String(e.message || e), "err"); }
+});
+$("btn-clear").onclick = () => { $("log").innerHTML = ""; };
+
+/* Transports */
+function setConnected(kind) {
+  const on = !!kind;
+  $("conn").classList.toggle("on", on);
+  $("conn-text").textContent = kind === "usb" ? "USB serial" : kind === "sim" ? "Simulator" : "Not connected";
+  $("btn-usb").hidden = on;
+  $("btn-sim").hidden = on || !simAvailable;
+  $("btn-close").hidden = !on;
+}
+
+async function connected(t) {
+  transport = t;
+  st = fresh();
+  if (t.kind === "sim") st.sim = { alive: null, links: [] };
+  $("log").innerHTML = "";
+  $("banner").style.display = "none";
+  setConnected(t.kind);
+  log(`connected (${t.kind === "usb" ? "USB serial, 115200 baud" : "simulator"})`, "ev");
+  start();
+}
+
+function disconnected(reason) {
+  if (!transport) return;
+  transport = null;
+  dropQueue();
+  setConnected(null);
+  log(reason || "disconnected", "err");
+  renderAll();
+}
+
+async function connectUsb() {
+  if (!("serial" in navigator)) {
+    showBanner("This browser has no Web Serial. Use Chrome or Edge, and open the page from http://localhost (run serve.py).");
+    return;
+  }
+  let port;
+  try { port = await navigator.serial.requestPort(); } catch { return; }
+  try { await port.open({ baudRate: 115200 }); } catch (e) {
+    showBanner(`Could not open the port: ${e.message}. Close any other serial monitor (PlatformIO, PuTTY) using it.`);
+    return;
+  }
+  const encoder = new TextEncoder();
+  const writer = port.writable.getWriter();
+  let reader = null, closing = false;
+  const t = {
+    kind: "usb",
+    send: line => writer.write(encoder.encode(line + "\n")),
+    close: async () => {
+      closing = true;
+      try { await reader?.cancel(); } catch {}
+      await loop;
+      try { writer.releaseLock(); } catch {}
+      try { await port.close(); } catch {}
+      disconnected("disconnected");
+    },
+  };
+  const loop = (async () => {
+    const dec = new TextDecoder();
+    let buf = "";
+    while (port.readable && !closing) {
+      reader = port.readable.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i;
+          while ((i = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, i).replace(/\r$/, "");
+            buf = buf.slice(i + 1);
+            if (line) onLine(line);
+          }
+          if (buf.length > 4096) buf = "";
+        }
+      } catch (e) {
+        if (!closing) log(`serial: ${e.message}`, "err");
+      } finally {
+        reader.releaseLock();
+      }
+    }
+    if (!closing) disconnected("USB disconnected");
+  })();
+  connected(t);
+}
+
+let simAvailable = false;
+function connectSim() {
+  const src = new EventSource("/sim/events");
+  const t = {
+    kind: "sim",
+    send: line => fetch("/sim/send", { method: "POST", body: line }).then(r => { if (!r.ok) throw new Error("bridge refused"); }),
+    close: async () => { src.close(); disconnected("disconnected"); },
+  };
+  src.onmessage = e => onLine(e.data);
+  src.onerror = () => { if (src.readyState === EventSource.CLOSED) disconnected("simulator bridge closed"); };
+  src.onopen = () => { if (transport !== t) connected(t); };
+}
+
+$("btn-usb").onclick = connectUsb;
+$("btn-sim").onclick = connectSim;
+$("btn-close").onclick = () => transport && transport.close();
+
+(async () => {
+  try {
+    const r = await fetch("/sim/info");
+    if (r.ok) {
+      const info = await r.json();
+      simAvailable = true;
+      speed = info.speed || 1;
+    }
+  } catch {}
+  setConnected(null);
+  renderAll();
+  if (simAvailable && new URLSearchParams(location.search).has("sim")) connectSim();
+})();
+</script>
+</body>
+</html>
